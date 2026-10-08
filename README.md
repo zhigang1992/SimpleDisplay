@@ -87,7 +87,33 @@ failing silently.
 ```bash
 make cli                  # build .build/apple/Products/Release/simpledisplayctl
 make cli-install          # copy to /usr/local/bin (override with CLI_INSTALL_DIR)
+```
 
+Display commands talk to the running app and print the result. Add `--json`
+for machine-readable output.
+
+```bash
+simpledisplayctl list                       # all displays, including disabled ones
+simpledisplayctl disable "LG HDR 4K"        # turn a screen off
+simpledisplayctl enable 3                   # turn it back on
+simpledisplayctl toggle builtin
+simpledisplayctl main "LG"                  # make it the main display
+simpledisplayctl modes main                 # available resolutions
+simpledisplayctl mode main 1920x1080 --hidpi --refresh 60
+simpledisplayctl forget 3                   # drop a disabled display from the list
+```
+
+`<display>` can be the numeric id, the UUID, the name (case-insensitive; a
+unique substring works), `main`, or `builtin`. An ambiguous name is an error
+that lists the candidates.
+
+Exit codes: `0` success, `1` error (message on stderr; with `--json` also
+`{"error": "..."}` on stdout), `3` app not reachable. Disabling the last
+active display is refused.
+
+Virtual display commands:
+
+```bash
 simpledisplayctl create --width 2732 --height 2048 --name "iPad Pro" --hidpi
 simpledisplayctl remove --name "iPad Pro"
 simpledisplayctl reconfigure --id 3 --width 1600 --height 1200
@@ -95,9 +121,13 @@ simpledisplayctl open
 simpledisplayctl status   # exit 0 = installed, 2 = missing; prints pid if running
 ```
 
-`simpledisplayctl` is a thin wrapper — every action builds a
-`simpledisplay://` URL and hands it to `/usr/bin/open`. Running the CLI from
-an SSH session drives the remote Mac's local SimpleDisplay.
+Display commands use a Unix socket the app opens at
+`~/Library/Application Support/SimpleDisplay/control.sock` (mode 0600, so only
+your user can connect; override with `SIMPLEDISPLAY_SOCKET`). If nothing is
+listening, the CLI launches the app in the background and waits for it.
+Virtual display commands build a `simpledisplay://` URL and hand it to
+`/usr/bin/open`. Running the CLI from an SSH session drives the remote Mac's
+local SimpleDisplay.
 
 ### Remote usage (SSH)
 

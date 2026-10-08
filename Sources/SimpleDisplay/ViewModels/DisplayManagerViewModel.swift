@@ -184,25 +184,43 @@ final class DisplayManagerViewModel {
         }
     }
 
+    /// Applies `mode` and waits for the topology to settle so callers see the
+    /// new mode in `displays` when this returns.
+    func applyMode(_ mode: DisplayMode, to display: DisplayInfo) async throws {
+        guard !isBusy else { throw DisplayActionError.busy }
+        guard display.isActive else { throw DisplayActionError.displayDisabled(display.name) }
+        guard display.currentMode != mode else { return }
+        isBusy = true
+        defer { isBusy = false }
+        try displayService.setDisplayMode(mode, for: display.id)
+        await settleAndRefresh()
+    }
+
     // MARK: - Set Main Display
 
     func setAsMainDisplay(_ display: DisplayInfo) {
         guard display.isActive, !display.isMain, !isBusy else { return }
+        Task {
+            do { try await makeMainDisplay(display) } catch DisplayActionError.busy {} catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    /// Makes `display` the main display and waits for the topology to settle.
+    /// No-op if it already is main.
+    func makeMainDisplay(_ display: DisplayInfo) async throws {
+        guard !isBusy else { throw DisplayActionError.busy }
+        guard display.isActive else { throw DisplayActionError.displayDisabled(display.name) }
+        guard !display.isMain else { return }
         isBusy = true
         busyMessage = t("setting_main")
-        Task {
-            defer { isBusy = false; busyMessage = nil }
-            do {
-                try displayService.setMainDisplay(display.id)
-            } catch {
-                errorMessage = error.localizedDescription
-                return
-            }
-            if let uuid = display.uuid {
-                statePersistence.recordMain(uuid: uuid)
-            }
-            await settleAndRefresh()
+        defer { isBusy = false; busyMessage = nil }
+        try displayService.setMainDisplay(display.id)
+        if let uuid = display.uuid {
+            statePersistence.recordMain(uuid: uuid)
         }
+        await settleAndRefresh()
     }
 
     // MARK: - Enable / Disable Display
@@ -213,6 +231,22 @@ final class DisplayManagerViewModel {
 
     func toggleDisplay(_ display: DisplayInfo) {
         guard !isBusy else { return }
+        Task {
+            do { try await setDisplayEnabled(display, enabled: !display.isActive) } catch DisplayActionError.busy {} catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    /// Enables or disables `display` and waits for the topology to settle.
+    /// No-op if the display is already in the requested state. Refuses to
+    /// disable the last active display.
+    func setDisplayEnabled(_ display: DisplayInfo, enabled: Bool) async throws {
+        guard !isBusy else { throw DisplayActionError.busy }
+        guard display.isActive != enabled else { return }
+        if !enabled, activeDisplays.count <= 1 {
+            throw DisplayActionError.lastActiveDisplay(display.name)
+        }
         let wasEnabled = display.isActive
         // When re-enabling, macOS brings the display back at a default mode that
         // can drop HiDPI. Remember the mode it had so we can restore it.
@@ -221,55 +255,47 @@ final class DisplayManagerViewModel {
         busyMessage = wasEnabled
             ? t("disabling_format", display.name)
             : t("enabling_format", display.name)
-        Task {
-            defer { isBusy = false; busyMessage = nil }
+        defer { isBusy = false; busyMessage = nil }
 
-            if wasEnabled {
-                do { try displayService.disableDisplay(display.id, allDisplays: displays) } catch {
-                    errorMessage = error.localizedDescription
-                    return
-                }
-                // Retain identity so the row survives the display leaving the
-                // online list (both in-session and across an app restart).
-                if let uuid = display.uuid {
-                    disabledGhosts[uuid] = display.asDisabledGhost()
-                    statePersistence.recordDisabled(uuid: uuid, id: display.id, name: display.name)
-                }
-            } else {
-                do { try displayService.enableDisplay(display.id) } catch {
-                    errorMessage = error.localizedDescription
-                    return
-                }
-                if let uuid = display.uuid {
-                    disabledGhosts[uuid] = nil
-                    statePersistence.recordEnabled(uuid: uuid)
-                }
+        if wasEnabled {
+            try displayService.disableDisplay(display.id, allDisplays: displays)
+            // Retain identity so the row survives the display leaving the
+            // online list (both in-session and across an app restart).
+            if let uuid = display.uuid {
+                disabledGhosts[uuid] = display.asDisabledGhost()
+                statePersistence.recordDisabled(uuid: uuid, id: display.id, name: display.name)
             }
-
-            await settleAndRefresh()
-
-            // Restore the pre-disable mode if re-enabling reset it (e.g. HiDPI → non-HiDPI).
-            if let modeToRestore {
-                restoreMode(modeToRestore, for: display.id)
+        } else {
+            try displayService.enableDisplay(display.id)
+            if let uuid = display.uuid {
+                disabledGhosts[uuid] = nil
+                statePersistence.recordEnabled(uuid: uuid)
             }
+        }
 
-            // Safety: re-enable a display if all got disabled
-            if wasEnabled {
-                let active = displays.filter { $0.isActive }
-                if active.isEmpty {
-                    let fallback = displays.first(where: { $0.isBuiltIn }) ?? displays.first
-                    if let target = fallback {
-                        busyMessage = t("re_enabling_format", target.name)
-                        do {
-                            try displayService.enableDisplay(target.id)
-                            if let uuid = target.uuid {
-                                disabledGhosts[uuid] = nil
-                                statePersistence.recordEnabled(uuid: uuid)
-                            }
-                            await settleAndRefresh()
-                        } catch {
-                            errorMessage = t("all_disabled_error", error.localizedDescription)
+        await settleAndRefresh()
+
+        // Restore the pre-disable mode if re-enabling reset it (e.g. HiDPI → non-HiDPI).
+        if let modeToRestore {
+            restoreMode(modeToRestore, for: display.id)
+        }
+
+        // Safety: re-enable a display if all got disabled
+        if wasEnabled {
+            let active = displays.filter { $0.isActive }
+            if active.isEmpty {
+                let fallback = displays.first(where: { $0.isBuiltIn }) ?? displays.first
+                if let target = fallback {
+                    busyMessage = t("re_enabling_format", target.name)
+                    do {
+                        try displayService.enableDisplay(target.id)
+                        if let uuid = target.uuid {
+                            disabledGhosts[uuid] = nil
+                            statePersistence.recordEnabled(uuid: uuid)
                         }
+                        await settleAndRefresh()
+                    } catch {
+                        throw DisplayActionError.failed(t("all_disabled_error", error.localizedDescription))
                     }
                 }
             }

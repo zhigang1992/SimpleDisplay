@@ -12,6 +12,22 @@ private let logger = Logger(subsystem: "app.simpledisplay", category: "URLScheme
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let viewModel = DisplayManagerViewModel()
+    private var controlServer: ControlServer?
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        let viewModel = self.viewModel
+        let server = ControlServer { request in await viewModel.handle(request) }
+        do {
+            try server.start()
+            controlServer = server
+        } catch {
+            logger.error("Control socket unavailable: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        controlServer?.stop()
+    }
 
     func application(_ application: NSApplication, open urls: [URL]) {
         for url in urls {
