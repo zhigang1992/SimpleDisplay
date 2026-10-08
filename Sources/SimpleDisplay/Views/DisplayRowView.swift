@@ -66,15 +66,39 @@ struct DisplayRowView: View {
 
             Spacer()
 
-            // Enable/Disable toggle
-            Toggle("", isOn: Binding(
-                get: { display.isActive },
-                set: { _ in viewModel.toggleDisplay(display) }
-            ))
-            .toggleStyle(.switch)
-            .controlSize(.mini)
-            .labelsHidden()
-            .disabled(viewModel.isBusy || (display.isActive && viewModel.activeDisplays.count <= 1))
+            if display.isGhost {
+                Button {
+                    viewModel.forgetDisabledDisplay(display)
+                } label: {
+                    if display.isPlaceholder {
+                        Text(verbatim: locale.t("clear_display_short"))
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.body)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .buttonStyle(.borderless)
+                .help(locale.t("clear_display_help"))
+                .accessibilityLabel(locale.t("clear_display"))
+                .disabled(viewModel.isBusy)
+            }
+
+            // Placeholder ghosts have no live display to toggle; enable is on
+            // the right-click menu. Live and still-remembered disabled rows
+            // keep the switch so they can be turned back on directly.
+            if !display.isGhost || !display.isPlaceholder {
+                Toggle("", isOn: Binding(
+                    get: { display.isActive },
+                    set: { _ in viewModel.toggleDisplay(display) }
+                ))
+                .toggleStyle(.switch)
+                .controlSize(.mini)
+                .labelsHidden()
+                .disabled(viewModel.isBusy || (display.isActive && viewModel.activeDisplays.count <= 1))
+            }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
@@ -82,6 +106,14 @@ struct DisplayRowView: View {
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .padding(.horizontal, 8)
         .opacity(display.isActive ? 1.0 : 0.7)
+        .modifier(GhostRowContextMenu(
+            isGhost: display.isGhost,
+            enableTitle: locale.t("enable_display"),
+            clearTitle: locale.t("clear_display"),
+            isBusy: viewModel.isBusy,
+            onEnable: { viewModel.toggleDisplay(display) },
+            onClear: { viewModel.forgetDisabledDisplay(display) }
+        ))
     }
 
     private var iconName: String {
@@ -94,6 +126,31 @@ struct DisplayRowView: View {
         if !display.isActive { return .gray }
         if display.isVirtual { return .purple }
         return .blue
+    }
+}
+
+/// Applies a right-click menu only on remembered (ghost) disabled rows, so
+/// active rows don't swallow clicks into an empty menu.
+private struct GhostRowContextMenu: ViewModifier {
+    let isGhost: Bool
+    let enableTitle: String
+    let clearTitle: String
+    let isBusy: Bool
+    let onEnable: () -> Void
+    let onClear: () -> Void
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if isGhost {
+            content.contextMenu {
+                Button(enableTitle, action: onEnable)
+                    .disabled(isBusy)
+                Button(clearTitle, role: .destructive, action: onClear)
+                    .disabled(isBusy)
+            }
+        } else {
+            content
+        }
     }
 }
 

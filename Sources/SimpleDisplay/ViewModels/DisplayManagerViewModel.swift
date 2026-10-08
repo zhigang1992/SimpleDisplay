@@ -276,6 +276,19 @@ final class DisplayManagerViewModel {
         }
     }
 
+    /// Removes a remembered disabled display from the list without re-enabling
+    /// it. Used when the hardware is gone and the ghost row is leftover.
+    func forgetDisabledDisplay(_ display: DisplayInfo) {
+        guard !display.isActive, !isBusy else { return }
+        if let uuid = display.uuid {
+            disabledGhosts[uuid] = nil
+            statePersistence.forget(uuid: uuid)
+        } else {
+            disabledGhosts = disabledGhosts.filter { $0.value.id != display.id }
+        }
+        refresh()
+    }
+
     // MARK: - Virtual Display Management
 
     func createVirtualDisplay() {

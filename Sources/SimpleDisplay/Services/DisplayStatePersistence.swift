@@ -41,6 +41,16 @@ final class DisplayStatePersistence {
         upsert(uuid: uuid) { $0.isDisabled = false }
     }
 
+    /// Drops a persisted entry entirely so a forgotten disabled display is not
+    /// restored as a ghost row on the next launch.
+    func forget(uuid: String) {
+        var configs = loadConfigs()
+        let before = configs.count
+        configs.removeAll { $0.uuid == uuid }
+        guard configs.count != before else { return }
+        writeConfigs(configs)
+    }
+
     /// Marks `uuid` as main and clears the flag on every other entry.
     func recordMain(uuid: String) {
         var configs = loadConfigs()

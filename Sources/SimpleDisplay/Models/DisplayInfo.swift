@@ -16,6 +16,11 @@ struct DisplayInfo: Identifiable, Equatable {
     let isEnabled: Bool
     let physicalSize: CGSize
     let backingScaleFactor: Double
+    /// True when this row is synthesized for a display that has left the online
+    /// list (disabled via `CGSConfigureDisplayEnabled`, or restored from a prior
+    /// session). Ghosts can be re-enabled or forgotten; they are not live
+    /// CoreGraphics objects.
+    let isGhost: Bool
 
     var isActive: Bool { isEnabled }
 
@@ -24,7 +29,8 @@ struct DisplayInfo: Identifiable, Equatable {
             id: id, uuid: uuid, name: name, currentMode: currentMode,
             availableModes: availableModes, isVirtual: isVirtual,
             isBuiltIn: isBuiltIn, isMain: isMain, isEnabled: isEnabled,
-            physicalSize: physicalSize, backingScaleFactor: backingScaleFactor
+            physicalSize: physicalSize, backingScaleFactor: backingScaleFactor,
+            isGhost: isGhost
         )
     }
 
@@ -35,7 +41,8 @@ struct DisplayInfo: Identifiable, Equatable {
             id: id, uuid: uuid, name: name, currentMode: currentMode,
             availableModes: availableModes, isVirtual: isVirtual,
             isBuiltIn: isBuiltIn, isMain: false, isEnabled: false,
-            physicalSize: physicalSize, backingScaleFactor: backingScaleFactor
+            physicalSize: physicalSize, backingScaleFactor: backingScaleFactor,
+            isGhost: true
         )
     }
 
@@ -47,7 +54,8 @@ struct DisplayInfo: Identifiable, Equatable {
             id: id, uuid: uuid, name: name,
             currentMode: DisplayMode(width: 0, height: 0, pixelWidth: 0, pixelHeight: 0, refreshRate: 0, isHiDPI: false),
             availableModes: [], isVirtual: false, isBuiltIn: false,
-            isMain: false, isEnabled: false, physicalSize: .zero, backingScaleFactor: 1.0
+            isMain: false, isEnabled: false, physicalSize: .zero, backingScaleFactor: 1.0,
+            isGhost: true
         )
     }
 

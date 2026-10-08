@@ -113,7 +113,8 @@ final class DisplayService {
             isMain: CGDisplayIsMain(displayID) != 0,
             isEnabled: isEnabled,
             physicalSize: CGDisplayScreenSize(displayID),
-            backingScaleFactor: scaleMap[displayID] ?? 1.0
+            backingScaleFactor: scaleMap[displayID] ?? 1.0,
+            isGhost: false
         )
     }
 
