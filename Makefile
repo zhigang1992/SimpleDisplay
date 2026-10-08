@@ -1,7 +1,9 @@
 APP_NAME = SimpleDisplay
 CLI_NAME = simpledisplayctl
 CLI_INSTALL_DIR ?= /usr/local/bin
-BUILD_DIR = .build/apple/Products/Release
+# Ask SwiftPM where universal release products land; the layout moved from
+# .build/apple/... to .build/out/... across toolchain versions.
+BUILD_DIR := $(shell swift build -c release --arch arm64 --arch x86_64 --show-bin-path 2>/dev/null || echo .build/apple/Products/Release)
 OUT_DIR = .build
 APP_BUNDLE = $(OUT_DIR)/$(APP_NAME).app
 BINARY = $(BUILD_DIR)/$(APP_NAME)
@@ -34,6 +36,7 @@ debug:
 	@/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $(VERSION)" $(OUT_DIR)/$(APP_NAME)-debug.app/Contents/Info.plist
 	@/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $(VERSION)" $(OUT_DIR)/$(APP_NAME)-debug.app/Contents/Info.plist
 	@cp branding/assets/AppIcon.icns $(OUT_DIR)/$(APP_NAME)-debug.app/Contents/Resources/AppIcon.icns
+	@cp -R .build/debug/SimpleDisplay_SimpleDisplay.bundle $(OUT_DIR)/$(APP_NAME)-debug.app/Contents/Resources/
 	@echo "Built $(OUT_DIR)/$(APP_NAME)-debug.app ($(VERSION))"
 
 build:
